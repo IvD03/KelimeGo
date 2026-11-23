@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Карточки TR-RU</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#4a90e2">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Карточки">
+<link rel="icon" href="./icon.svg" type="image/svg+xml">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; max-width: 900px;
+         margin: 0 auto; padding: 20px; background: #f5f5f7; color: #222; }
+  h1 { font-size: 24px; margin-top: 0; display: flex; align-items: center;
+       gap: 12px; flex-wrap: wrap; }
+  h1 .title { flex: 1; min-width: 200px; }
+  h2 { font-size: 20px; }
+  .hidden { display: none !important; }
+
+  .drop { border: 2px dashed #aaa; border-radius: 12px; padding: 30px;
+          text-align: center; background: #fff; cursor: pointer; transition: .2s; }
+  .drop:hover, .drop.drag { border-color: #4a90e2; background: #eef5ff; }
+  #status { margin: 12px 0; color: #555; min-height: 20px; }
+
+  .group-row { display: flex; justify-content: space-between; align-items: center;
+               background: #fff; padding: 14px 16px; border-radius: 10px;
+               margin-bottom: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.06);
+               cursor: pointer; transition: .15s; }
+  .group-row:hover { box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+  .group-name { font-weight: 600; font-size: 16px; }
+  .group-meta { font-size: 13px; color: #777; margin-top: 2px; }
+
+  button { padding: 10px 16px; border-radius: 8px; border: 1px solid #ccc;
+           background: #fff; cursor: pointer; font-size: 14px; font-family: inherit; }
+  button:hover { background: #f0f0f0; }
+  button.primary { background: #4a90e2; color: #fff; border-color: #4a90e2; }
+  button.primary:hover { background: #357abd; }
+  button.danger { color: #c33; border-color: #e0a0a0; }
+  button.danger:hover { background: #ffeaea; }
+  button.back { margin-bottom: 12px; }
+
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  select { padding: 9px 12px; border-radius: 8px; border: 1px solid #ccc;
+           background: #fff; font-size: 14px; font-family: inherit; }
+
+  .card { perspective: 1000px; height: 260px; margin: 20px 0; cursor: pointer; }
+  .card-inner { position: relative; width: 100%; height: 100%;
+                transition: transform .6s; transform-style: preserve-3d; }
+  .card.flipped .card-inner { transform: rotateY(180deg); }
+  .card-face { position: absolute; inset: 0; backface-visibility: hidden;
+               display: flex; align-items: center; justify-content: center;
+               border-radius: 16px; font-size: 32px; font-weight: 600;
+               padding: 20px; text-align: center;
+               box-shadow: 0 4px 16px rgba(0,0,0,.1); word-break: break-word; }
+  .front { background: linear-gradient(135deg,#ffd6e0,#ffe8f0); }
+  .back  { background: linear-gradient(135deg,#d6e4ff,#e8f0ff);
+           transform: rotateY(180deg); }
+  .counter { color: #666; margin: 0 8px; }
+
+  #groupWords { background: #fff; border-radius: 10px; padding: 12px 16px;
+                max-height: 400px; overflow: auto; margin-top: 16px; font-size: 14px; }
+  #groupWords .w { padding: 6px 0; border-bottom: 1px solid #eee;
+                   display: flex; justify-content: space-between; gap: 12px; }
+  #groupWords .w:last-child { border-bottom: none; }
+  #groupWords .w .tr { color: #333; }
+  #groupWords .w .ru { color: #666; }
+
+  #qArea { background: #fff; border-radius: 12px; padding: 24px; margin-top: 16px;
+           box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+  .q-info { display: flex; justify-content: space-between; color: #666;
+            font-size: 14px; margin-bottom: 8px; }
+  .q-prompt { font-size: 28px; font-weight: 700; text-align: center;
+              padding: 24px 0; color: #222; word-break: break-word; }
+  .q-label { text-align: center; color: #888; font-size: 13px; margin-bottom: 4px; }
+  #qOptions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+  @media (max-width: 560px) { #qOptions { grid-template-columns: 1fr; } }
+  .option { padding: 14px 16px; border-radius: 10px; border: 2px solid #ddd;
+            background: #fff; cursor: pointer; font-size: 16px; text-align: left;
+            transition: .15s; font-family: inherit; }
+  .option:hover:not(:disabled) { border-color: #4a90e2; background: #f5f9ff; }
+  .option:disabled { cursor: default; }
+  .option.correct { border-color: #3c3; background: #eaffea; color: #080; }
+  .option.wrong   { border-color: #e33; background: #ffeaea; color: #a00; }
+  #qFeedback { text-align: center; margin-top: 16px; }
+  .q-result { text-align: center; }
+  .q-result .big { font-size: 48px; font-weight: 700; color: #4a90e2; margin: 12px 0; }
+
+  details { margin-top: 12px; }
+  summary { cursor: pointer; color: #4a90e2; }
+  pre { background:#fff; padding:10px; border-radius:8px; overflow:auto; }
+</style>
+</head>
+<body>
+
+<!-- ============ GROUPS VIEW ============ -->
+<section id="view-groups" class="view">
+  <h1>
+    <span class="title">📚 Группы слов</span>
+    <button id="installBtn" class="primary hidden">📲 Установить</button>
+  </h1>
+  <p>Загрузите PDF — слова добавятся в группу с именем файла.</p>
+  <div class="drop" id="drop">
+    <input type="file" id="file" accept="application/pdf" hidden>
+    <div>Перетащите PDF сюда или <b>нажмите для выбора</b></div>
+  </div>
+  <div id="status"></div>
+  <div id="groupsList" style="margin-top:20px;"></div>
+
+  <details style="margin-top:30px;font-size:13px;color:#777;">
+    <summary>Как должен выглядеть PDF</summary>
+    <p>Каждая строка — турецкое слово и русский перевод, разделённые тире, двоеточием, табуляцией или несколькими пробелами:</p>
+    <pre>kitap — книга
+elma - яблоко
+su: вода
+ev    дом</pre>
+    <p>PDF должен содержать текстовый слой (не скан).</p>
+  </details>
+</section>
+
+<!-- ============ GROUP VIEW ============ -->
+<section id="view-group" class="view hidden">
+  <button class="back" data-back="groups">← Все группы</button>
+  <h2 id="groupTitle"></h2>
+  <div class="controls" style="margin-top:12px;">
+    <button id="btnFlashcards">📇 Карточки</button>
+    <select id="quizDir">
+      <option value="tr-ru">Турецкое → Русское</option>
+      <option value="ru-tr">Русское → Турецкое</option>
+    </select>
+    <button id="btnQuiz" class="primary">🎯 Начать тест</button>
+    <button id="btnExport">💾 Экспорт TSV</button>
+    <button id="btnDelete" class="danger">🗑 Удалить группу</button>
+  </div>
+  <div id="groupWords"></div>
+</section>
+
+<!-- ============ FLASHCARDS VIEW ============ -->
+<section id="view-flashcards" class="view hidden">
+  <button class="back" data-back="group">← Назад</button>
+  <h2>📇 Карточки</h2>
+  <div class="controls">
+    <button id="shuffle">🔀 Перемешать</button>
+    <button id="swap">🔄 Поменять стороны</button>
+    <span class="counter" id="fcCounter"></span>
+  </div>
+  <div class="card" id="card">
+    <div class="card-inner">
+      <div class="card-face front" id="front"></div>
+      <div class="card-face back" id="back"></div>
+    </div>
+  </div>
+  <div class="controls">
+    <button id="prev">◀ Назад</button>
+    <button id="next" class="primary">Вперёд ▶</button>
+  </div>
+  <p style="color:#888;font-size:13px;margin-top:16px;">Клик по карточке — перевернуть · ← → — листать · Enter — перевернуть</p>
+</section>
+
+<!-- ============ QUIZ VIEW ============ -->
+<section id="view-quiz" class="view hidden">
+  <button class="back" data-back="group">← Назад</button>
+  <h2>🎯 Тест</h2>
+  <div id="qArea"></div>
+</section>
+
+<script>
+const pdfjsLib = window.pdfjsLib;
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+const STORAGE_KEY = 'kartochki_groups_v1';
+
+const state = {
+  groups: {},
+  currentGroup: null,
+  fc: null,
+  quiz: null,
+};
+
+/* ---------- Storage ---------- */
+function loadGroups() {
+  try {
+    const s = localStorage.getItem(STORAGE_KEY);
+    if (s) state.groups = JSON.parse(s) || {};
+  } catch (e) { state.groups = {}; }
+}
+function saveGroups() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.groups)); }
+  catch (e) { console.warn('Не удалось сохранить:', e); }
+}
+
+/* ---------- Utilities ---------- */
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function plural(n, one, few, many) {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+}
+
+/* ---------- View switching ---------- */
+function showView(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
+  document.getElementById('view-' + id).classList.remove('hidden');
+  window.scrollTo(0, 0);
+}
+document.addEventListener('click', e => {
+  const btn = e.target.closest('[data-back]');
+  if (!btn) return;
+  showView(btn.getAttribute('data-back'));
+});
+
+/* ---------- Groups list ---------- */
+function renderGroups() {
+  const list = document.getElementById('groupsList');
+  list.innerHTML = '';
+  const names = Object.keys(state.groups).sort((a, b) => a.localeCompare(b, 'ru'));
+  if (!names.length) {
+    list.innerHTML = '<p style="color:#888">Групп пока нет. Загрузите PDF, чтобы создать первую.</p>';
+    return;
+  }
+  names.forEach(name => {
+    const g = state.groups[name];
+    const row = document.createElement('div');
+    row.className = 'group-row';
+    row.innerHTML = `
+      <div>
+        <div class="group-name">${escapeHtml(name)}</div>
+        <div class="group-meta">${g.length} ${plural(g.length, 'слово','слова','слов')}</div>
+      </div>
+      <button class="primary">Открыть</button>
+    `;
+    row.querySelector('button').onclick = e => { e.stopPropagation(); openGroup(name); };
+    row.onclick = () => openGroup(name);
+    list.appendChild(row);
+  });
+}
+
+/* ---------- PDF upload ---------- */
+const drop      = document.getElementById('drop');
+const fileInput = document.getElementById('file');
+const statusEl  = document.getElementById('status');
+
+drop.addEventListener('click', () => fileInput.click());
+drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('drag'));
+drop.addEventListener('drop', e => {
+  e.preventDefault(); drop.classList.remove('drag');
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => {
+  if (e.target.files[0]) handleFile(e.target.files[0]);
+  fileInput.value = '';
+});
+
+async function handleFile(file) {
+  if (!file.name.toLowerCase().endsWith('.pdf')) {
+    statusEl.textContent = 'Пожалуйста, выберите PDF файл.';
+    return;
+  }
+  statusEl.textContent = 'Читаю PDF…';
+  try {
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    let allText = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      statusEl.textContent = `Извлекаю текст… страница ${i} / ${pdf.numPages}`;
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      allText += itemsToText(content.items) + '\n';
+    }
+    statusEl.textContent = 'Распознаю пары…';
+    const pairs = parsePairs(allText);
+    if (!pairs.length) {
+      statusEl.textContent = 'Не удалось найти пары. Проверьте формат PDF.';
+      return;
+    }
+    const groupName = file.name.replace(/\.pdf$/i, '').trim() || 'Без названия';
+    const existing = state.groups[groupName] || [];
+    const merged = existing.slice();
+    let added = 0;
+    for (const p of pairs) {
+      if (!merged.some(x => x.tr === p.tr && x.ru === p.ru)) {
+        merged.push(p);
+        added++;
+      }
+    }
+    state.groups[groupName] = merged;
+    saveGroups();
+    renderGroups();
+    const existed = existing.length > 0;
+    statusEl.textContent = existed
+      ? `Группа «${groupName}»: добавлено ${added} новых слов (всего ${merged.length}).`
+      : `Создана группа «${groupName}»: ${merged.length} слов.`;
+    openGroup(groupName);
+  } catch (err) {
+    console.error(err);
+    statusEl.textContent = 'Ошибка при обработке PDF: ' + err.message;
+  }
+}
+
+/* ---------- Text extraction / parsing ---------- */
+function itemsToText(items) {
+  const sorted = items.slice().sort((a, b) => {
+    const dy = b.transform[5] - a.transform[5];
+    if (Math.abs(dy) > 3) return dy;
+    return a.transform[4] - b.transform[4];
+  });
+  const lines = [];
+  let curY = null, curLine = [];
+  for (const it of sorted) {
+    const y = it.transform[5];
+    if (curY === null || Math.abs(y - curY) < 4) {
+      curLine.push(it.str);
+      if (curY === null) curY = y;
+    } else {
+      lines.push(curLine.join(' ').trim());
+      curLine = [it.str];
+      curY = y;
+    }
+  }
+  if (curLine.length) lines.push(curLine.join(' ').trim());
+  return lines.join('\n');
+}
+
+const CYRILLIC  = /[\u0400-\u04FF]/;
+const LATIN     = /[A-Za-zÇĞİÖŞÜçğıöşü]/;
+const SEPARATOR = /(?:\s*[—–\-:|]\s*|\t+|\s{2,})/;
+
+function detectLang(t) {
+  const hasCy  = CYRILLIC.test(t);
+  const hasLat = LATIN.test(t);
+  if (hasCy && !hasLat) return 'ru';
+  if (hasLat && !hasCy) return 'tr';
+  return null;
+}
+
+function parsePairs(text) {
+  const rawLines = text.split('\n')
+    .map(s => s.replace(/^\s*\d+[\.\)]\s*/, '').trim())
+    .filter(s => s.length >= 2);
+
+  const result = [];
+  const singles = [];
+
+  for (const line of rawLines) {
+    const parts = line.split(SEPARATOR).map(s => s.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      let tr = null, ru = null;
+      for (const p of parts) {
+        const lang = detectLang(p);
+        if (lang === 'tr' && !tr) tr = p;
+        else if (lang === 'ru' && !ru) ru = p;
+      }
+      if (tr && ru) { result.push({ tr, ru }); continue; }
+      if (parts.length === 2 &&
+          CYRILLIC.test(parts[0]) !== CYRILLIC.test(parts[1])) {
+        if (CYRILLIC.test(parts[0])) result.push({ tr: parts[1], ru: parts[0] });
+        else                          result.push({ tr: parts[0], ru: parts[1] });
+        continue;
+      }
+    }
+    singles.push(line);
+  }
+
+  for (let i = 0; i < singles.length; i++) {
+    if (i + 1 < singles.length) {
+      const a = singles[i], b = singles[i + 1];
+      const la = detectLang(a), lb = detectLang(b);
+      if (la && lb && la !== lb) {
+        result.push(la === 'tr' ? { tr: a, ru: b } : { tr: b, ru: a });
+        i++;
+      }
+    }
+  }
+  return result;
+}
+
+/* ---------- Group view ---------- */
+function openGroup(name) {
+  state.currentGroup = name;
+  document.getElementById('groupTitle').textContent = name;
+  renderGroupWords();
+  showView('group');
+}
+
+function renderGroupWords() {
+  const cont  = document.getElementById('groupWords');
+  const words = state.groups[state.currentGroup] || [];
+  cont.innerHTML = '';
+  words.forEach((w, i) => {
+    const d = document.createElement('div');
+    d.className = 'w';
+    d.innerHTML = `<span class="tr">${i + 1}. ${escapeHtml(w.tr)}</span>
+                   <span class="ru">${escapeHtml(w.ru)}</span>`;
+    cont.appendChild(d);
+  });
+}
+
+document.getElementById('btnDelete').onclick = () => {
+  if (!state.currentGroup) return;
+  if (!confirm(`Удалить группу «${state.currentGroup}»?`)) return;
+  delete state.groups[state.currentGroup];
+  saveGroups();
+  state.currentGroup = null;
+  renderGroups();
+  showView('groups');
+};
+
+document.getElementById('btnExport').onclick = () => {
+  const words = state.groups[state.currentGroup] || [];
+  if (!words.length) return;
+  const tsv = words.map(p => `${p.tr}\t${p.ru}`).join('\n');
+  const blob = new Blob([tsv], { type: 'text/tab-separated-values;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (state.currentGroup || 'kartochki') + '.tsv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+/* ---------- Flashcards ---------- */
+const cardEl    = document.getElementById('card');
+const frontEl   = document.getElementById('front');
+const backEl    = document.getElementById('back');
+const fcCounter = document.getElementById('fcCounter');
+
+document.getElementById('btnFlashcards').onclick = () => {
+  const words = state.groups[state.currentGroup] || [];
+  if (!words.length) return;
+  state.fc = {
+    pairs: words,
+    order: words.map((_, i) => i),
+    idx: 0,
+    swapped: false,
+  };
+  renderFlashcard();
+  showView('flashcards');
+};
+
+function renderFlashcard() {
+  const fc = state.fc;
+  if (!fc) return;
+  const p = fc.pairs[fc.order[fc.idx]];
+  frontEl.textContent = fc.swapped ? p.ru : p.tr;
+  backEl.textContent  = fc.swapped ? p.tr : p.ru;
+  fcCounter.textContent = `${fc.idx + 1} / ${fc.order.length}`;
+  cardEl.classList.remove('flipped');
+}
+
+cardEl.addEventListener('click', () => cardEl.classList.toggle('flipped'));
+
+document.getElementById('next').onclick = () => {
+  if (!state.fc) return;
+  state.fc.idx = (state.fc.idx + 1) % state.fc.order.length;
+  renderFlashcard();
+};
+document.getElementById('prev').onclick = () => {
+  if (!state.fc) return;
+  state.fc.idx = (state.fc.idx - 1 + state.fc.order.length) % state.fc.order.length;
+  renderFlashcard();
+};
+document.getElementById('shuffle').onclick = () => {
+  if (!state.fc) return;
+  state.fc.order = shuffle(state.fc.order);
+  state.fc.idx = 0;
+  renderFlashcard();
+};
+document.getElementById('swap').onclick = () => {
+  if (!state.fc) return;
+  state.fc.swapped = !state.fc.swapped;
+  renderFlashcard();
+};
+
+/* ---------- Quiz ---------- */
+document.getElementById('btnQuiz').onclick = () => {
+  const dir   = document.getElementById('quizDir').value;
+  const words = state.groups[state.currentGroup] || [];
+  if (words.length < 4) {
+    alert('Для теста нужно минимум 4 слова в группе.');
+    return;
+  }
+  state.quiz = {
+    direction: dir,
+    questions: shuffle(words),
+    idx: 0,
+    score: 0,
+    answered: false,
+  };
+  showView('quiz');
+  renderQuiz();
+};
+
+function renderQuiz() {
+  const q = state.quiz;
+  const area = document.getElementById('qArea');
+
+  if (q.idx >= q.questions.length) {
+    const total = q.questions.length;
+    const pct   = Math.round(q.score / total * 100);
+    const emoji = pct >= 90 ? '🏆' : pct >= 70 ? '👍' : pct >= 50 ? '🙂' : '📚';
+    area.innerHTML = `
+      <div class="q-result">
+        <div style="font-size:48px">${emoji}</div>
+        <h3>Результат</h3>
+        <div class="big">${q.score} / ${total}</div>
+        <p style="color:#666">${pct}% правильных</p>
+        <div class="controls" style="justify-content:center;margin-top:16px;">
+          <button class="primary" id="qRestart">Пройти заново</button>
+          <button id="qBack">← К группе</button>
+        </div>
+      </div>
+    `;
+    area.querySelector('#qRestart').onclick = () => {
+      state.quiz = {
+        direction: q.direction,
+        questions: shuffle(state.groups[state.currentGroup]),
+        idx: 0, score: 0, answered: false,
+      };
+      renderQuiz();
+    };
+    area.querySelector('#qBack').onclick = () => showView('group');
+    return;
+  }
+
+  const word  = q.questions[q.idx];
+  const isTrRu = q.direction === 'tr-ru';
+  const prompt  = isTrRu ? word.tr : word.ru;
+  const correct = isTrRu ? word.ru : word.tr;
+
+  const groupWords = state.groups[state.currentGroup] || [];
+  let pool = [...new Set(
+    groupWords.filter(w => w !== word).map(w => isTrRu ? w.ru : w.tr)
+  )].filter(t => t !== correct);
+
+  if (pool.length < 3) {
+    const otherWords = Object.values(state.groups).flat().filter(w => w !== word);
+    const extra = [...new Set(otherWords.map(w => isTrRu ? w.ru : w.tr))]
+      .filter(t => t !== correct && !pool.includes(t));
+    pool = [...pool, ...extra];
+  }
+
+  const distractors = shuffle(pool).slice(0, 3);
+  const options     = shuffle([correct, ...distractors]);
+
+  const label = isTrRu ? 'Выберите перевод на русский' : 'Выберите перевод на турецкий';
+
+  area.innerHTML = `
+    <div class="q-info">
+      <span>Вопрос ${q.idx + 1} / ${q.questions.length}</span>
+      <span class="q-score">✓ ${q.score}</span>
+    </div>
+    <div class="q-label">${label}</div>
+    <div class="q-prompt">${escapeHtml(prompt)}</div>
+    <div id="qOptions"></div>
+    <div id="qFeedback"></div>
+  `;
+
+  const optionsEl = area.querySelector('#qOptions');
+  options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.className   = 'option';
+    btn.textContent = opt;
+    btn.onclick     = () => answerQuiz(btn, opt, correct);
+    optionsEl.appendChild(btn);
+  });
+}
+
+function answerQuiz(btn, selected, correct) {
+  const q = state.quiz;
+  if (q.answered) return;
+  q.answered = true;
+
+  document.querySelectorAll('#qOptions .option').forEach(b => {
+    b.disabled = true;
+    if (b.textContent === correct) b.classList.add('correct');
+    else if (b === btn)            b.classList.add('wrong');
+  });
+
+  if (selected === correct) q.score++;
+
+  const scoreEl = document.querySelector('.q-score');
+  if (scoreEl) scoreEl.textContent = '✓ ' + q.score;
+
+  const fb   = document.getElementById('qFeedback');
+  const next = document.createElement('button');
+  next.className   = 'primary';
+  next.textContent = (q.idx + 1 < q.questions.length) ? 'Далее ▶' : 'Результат';
+  next.onclick = () => {
+    q.idx++;
+    q.answered = false;
+    renderQuiz();
+  };
+  fb.innerHTML = '';
+  fb.appendChild(next);
+  next.focus();
+}
+
+/* ---------- Keyboard ---------- */
+document.addEventListener('keydown', e => {
+  const fcVisible = !document.getElementById('view-flashcards').classList.contains('hidden');
+  if (fcVisible) {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); document.getElementById('next').click(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); document.getElementById('prev').click(); }
+    else if (e.key === 'Enter')     { cardEl.classList.toggle('flipped'); }
+  }
+  const qVisible = !document.getElementById('view-quiz').classList.contains('hidden');
+  if (qVisible && e.key === 'Enter') {
+    const btn = document.querySelector('#qFeedback button');
+    if (btn) { e.preventDefault(); btn.click(); }
+  }
+});
+
+/* ---------- Service Worker / PWA install ---------- */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(err => console.warn('SW:', err));
+  });
+}
+
+let deferredPrompt = null;
+const installBtn = document.getElementById('installBtn');
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  installBtn.classList.remove('hidden');
+});
+
+installBtn.addEventListener('click', async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  installBtn.classList.add('hidden');
+});
+
+window.addEventListener('appinstalled', () => {
+  installBtn.classList.add('hidden');
+  deferredPrompt = null;
+});
+
+// Если уже запущено как приложение — кнопку не показываем
+if (window.matchMedia('(display-mode: standalone)').matches) {
+  installBtn.classList.add('hidden');
+}
+
+/* ---------- Init ---------- */
+loadGroups();
+renderGroups();
+showView('groups');
+</script>
+</body>
+</html>
